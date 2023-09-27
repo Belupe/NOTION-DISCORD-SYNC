@@ -1,13 +1,10 @@
 // notificaciones.js
 
 const { Client, Intents } = require('discord.js');
-const discordClient = new Client({ intents: [Intents.GUILDS, Intents.GUILD_MESSAGES] });
 const { canalNotificacionesId, BugsID } = require('./acceso');
 const config = require('./config.json');
 const notion = require('./notion');
 const google = require('./google');
-
-discordClient.login(config.token);
 
 function enviarNotificacionDiscord(mensaje, tipo, curso) {
   let color, emoji;
