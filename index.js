@@ -39,9 +39,9 @@ client.on('ready', () => {
   // Ejecutar la función principal
   main();
 
-  // Enviar notificaciones
-  const canalDeNotificaciones = client.channels.get(canalNotificacionesId);
-  enviarNotificacion(canalDeNotificaciones);
+  // Importar y ejecutar el archivo notificacionesDeGoogle.js
+  const notificacionesDeGoogle = require('./notificacionesDeGoogle');
+  notificacionesDeGoogle.enviarNotificacion();
 });
 
 async function main() {

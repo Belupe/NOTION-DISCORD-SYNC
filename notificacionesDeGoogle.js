@@ -6,104 +6,63 @@ const google = require('./google.js');
 
 // Funciones para crear embeds
 
-function enviarNotificacionDiscord(mensaje, tipo, curso) {
-  const embed = new Embed();
-  embed.setTitle(tipo);
-  embed.setDescription(`${mensaje} ${getEmoji(tipo)}`);
-  embed.setColor(getColor(tipo));
-  embed.addField('Curso', curso, true);
-  return embed;
-}
+const colores = {
+  tareas: 'ORANGE',
+  fechasEntrega: 'GREEN',
+  fechasExamenes: 'RED',
+  cursos: 'YELLOW',
+  comentarios: 'PINK', // <-- Cambiado a PINK
+  anuncios: 'PURPLE', // <-- Cambiado a PURPLE
+};
 
-// Función para enviar notificaciones
-
-function enviarNotificacion(tipo, contenido) {
-  if (tipo === 'google') {
-    const { cursoId, tareas, fechasDeEntrega } = contenido;
-    const embed = enviarNotificacionDiscord(mensaje, tipo, cursoId);
-    console.log('Enviando notificación a Discord:', embed);
-    // Enviar notificación a Discord
-  } else {
-    console.error('Tipo de notificación no válido:', tipo);
-  }
-}
-
-// Funciones para crear embeds
-
-function enviarNotificacionDiscord(mensaje, tipo, curso) {
-  const embed = new Embed();
-  embed.setTitle(tipo);
-  embed.setDescription(`${mensaje} ${getEmoji(tipo)}`);
-  embed.setColor(getColor(tipo));
-  embed.addField('Curso', curso, true);
-  return embed;
-}
-
-function getColor(tipo) {
-  switch (tipo) {
-    case 'tareas':
-      return 'ORANGE';
-    case 'fechasEntrega':
-      return 'GREEN';
-    case 'fechasExamenes':
-      return 'RED';
-    case 'cursos':
-      return 'YELLOW';
-    case 'comentarios':
-      return '💬';
-    case 'anuncios':
-      return '📢';
-    default:
-      return '❗';
-  }
-}
-
-function getEmoji(tipo) {
-  switch (tipo) {
-    case 'tareas':
-      return '📚';
-    case 'fechasEntrega':
-      return '⏰';
-    case 'fechasExamenes':
-      return '📅';
-    case 'cursos':
-      return '🏫';
-    case 'comentarios':
-      return '📝';
-    case 'anuncios':
-      return '📢';
-    default:
-      return '❗';
-  }
-}
-
-// Función para enviar notificaciones
+const emojis = {
+  tareas: '📚',
+  fechasEntrega: '⏰',
+  fechasExamenes: '📅',
+  cursos: '🏫',
+  comentarios: '📝',
+  anuncios: '📢',
+};
 
 function enviarNotificacion(tipo, contenido) {
-  // Obtener los datos de la notificación
-  const { cursoId, tareas, fechasDeEntrega, fechasExamenes, comentario } = contenido;
+  const { cursoId } = contenido;
 
-  // Crear los embeds
-  const embeds = [];
-  if (tareas) {
-    embeds.push(enviarNotificacionDiscord('Tareas nuevas', tipo, cursoId, tareas));
-  }
-  if (fechasDeEntrega) {
-    embeds.push(enviarNotificacionDiscord('Fechas de entrega', tipo, cursoId, fechasDeEntrega));
-  }
-  if (fechasExamenes) {
-    embeds.push(enviarNotificacionDiscord('Fechas de exámenes', tipo, cursoId, fechasExamenes));
-  }
-  if (comentario) {
-    embeds.push(enviarNotificacionDiscord('Nuevo comentario', tipo, cursoId, comentario));
-  }
+  // Obtener el nombre del curso a partir de la ID
+  const nombreCurso = google.getNombreCurso(cursoId);
 
-  // Enviar los embeds al canal de notificaciones
-  const client = require('./index').client;
-  const canalDeNotificaciones = require('./acceso').canalNotificacionesId;
+  // Obtener el color y el emoji de la notificación
+  const { color, emoji } = getColorAndEmoji(tipo);
 
-  client.channels.get(canalDeNotificaciones).send(embeds);
+  // Crear el embed
+  const embed = new Embed();
+  embed.setTitle(tipo);
+  embed.setDescription(`${contenido.mensaje} ${emoji}`);
+  embed.setColor(color);
+  embed.addField('Curso', nombreCurso, true);
+
+  // Enviar el embed al canal de notificaciones
+  //client.channels.get(canalNotificacionesId).send(embed);
+
+  // Enviar un mensaje con @everyone
+  const mensaje = `@everyone **Nueva notificación**`;
+
+  // Enviar el mensaje con @everyone
+  client.channels.get(canalNotificacionesId).send(mensaje, { mentionEveryone: true });
+
+  // Enviar el embed al canal de notificaciones
+  client.channels.get(canalNotificacionesId).send(embed);
 }
+
+// Funciones para obtener el color y el emoji de la notificación
+
+function getColorAndEmoji(tipo) {
+  return {
+    color: colores[tipo],
+    emoji: emojis[tipo],
+  };
+}
+
+// Funciones para enviar notificaciones
 
 // Eventos de Google Classroom
 
@@ -112,27 +71,27 @@ google.miEventEmitter = new EventEmitter();
 
 // Eventos de Google Classroom
 google.miEventEmitter.on('nuevasTareas', (cursoId, tareas) => {
-  enviarNotificacion('google', { cursoId, tareas });
+  enviarNotificacion('google', { cursoId });
 });
 
 google.miEventEmitter.on('fechasEntrega', (cursoId, fechasDeEntrega) => {
-  enviarNotificacion('google', { cursoId, fechasDeEntrega });
+  enviarNotificacion('google', { cursoId });
 });
 
 google.miEventEmitter.on('fechasExamenes', (cursoId, fechasExamenes) => {
-  enviarNotificacion('google', { cursoId, fechasExamenes });
+  enviarNotificacion('google', { cursoId });
 });
 
 google.miEventEmitter.on('cursos', (cursoId, tipo) => {
-  enviarNotificacion('google', { cursoId, tipo });
+  enviarNotificacion('google', { cursoId });
 });
 
 google.miEventEmitter.on('comentarios', (cursoId, comentario) => {
-  enviarNotificacion('google', { cursoId, comentario });
+  enviarNotificacion('google', { cursoId });
 });
 
 google.miEventEmitter.on('anuncios', (cursoId, anuncio) => {
-  enviarNotificacion('google', { cursoId, anuncio });
+  enviarNotificacion('google', { cursoId });
 });
 
 module.exports = {
