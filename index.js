@@ -19,7 +19,7 @@ const intents = new GatewayIntentBits([
   GatewayIntentBits.GUILD_EMBEDS,
   GatewayIntentBits.DIRECT_MESSAGES,
   GatewayIntentBits.DIRECT_MESSAGE_REACTIONS,
-  GatewayIntentBits.DIRECT_MESSAGE_TYPING,
+  GatewayIntentBits.DIRECT_MESSAGE_TYPING
 ]);
 
 const { tokenNotion, baseDeDatosNotionId, BugsID, canalNotificacionesId } = require('./acceso.js');
