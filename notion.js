@@ -1,8 +1,7 @@
 // notion.js
 
 const { Client: NotionClient } = require('@notionhq/client');
-const { tokenNotion, baseDeDatosNotionId, BugsID} = require('./acceso');
-const { enviarNotificacion } = require('./notificaciones');
+const { tokenNotion, baseDeDatosNotionId, BugsID, canalTareasPendientes } = require('./acceso');
 const notion = new NotionClient({ auth: tokenNotion });
 const canalDeBugsId = BugsID;
 
@@ -29,8 +28,40 @@ async function obtenerYAlmacenarDatosDeGoogleClassroomEnNotion() {
       const fechasDeExamenes = await obtenerFechasDeExamenes(curso.id);
       const cursoEnNotion = await crearEntradaDeCursoEnNotion(curso.nombre, curso.descripcion);
 
-      await crearTablaDeberes(cursoEnNotion.id, tareas, fechasDeEntrega, fechasDeExamenes, curso.nombre);
+      await crearTablaDeberes(cursoEnNotion.id, tareas, anuncios, fechasDeEntrega, fechasDeExamenes, curso.nombre);
       await crearHojaCursoConSubhojas(curso.nombre);
+      await crearEtiquetaCurso(curso.nombre);
+
+      // Eliminar tareas entregadas
+      const tareasEntregadas = tareas.filter(tarea => tarea.estado === 'Entregada');
+      for (const tareaEntregada of tareasEntregadas) {
+        await notion.pages.delete({
+          page_id: tareaEntregada.id,
+        });
+      }
+
+      // Notificar tareas pendientes
+      const tareasPendientes = tareas.filter(tarea => tarea.estado !== 'Entregada');
+      const titulosTareasPendientes = tareasPendientes.map(tarea => tarea.titulo);
+      const numeroTareasPendientes = tareasPendientes.length;
+
+      const embedTareasPendientes = {
+        embeds: [{
+          type: 'image',
+          image: {
+            url: 'https://img.icons8.com/external-flat-icons/16/000000/warning--flat-icons.png',
+          },
+        }, {
+          type: 'rich_text',
+          rich_text: [{
+            text: `¡Faltan ${numeroTareasPendientes} tareas de ${curso.nombre}!`,
+            bold: true,
+            color: '#FF0000',
+          }],
+        }],
+      };
+
+      enviarNotificacion(embedTareasPendientes, canalTareasPendientes);
     }
 
     console.log('Datos de Google Classroom almacenados en Notion.');
@@ -60,114 +91,6 @@ async function crearEntradaDeCursoEnNotion(nombre, descripcion) {
     return response;
   } catch (error) {
     console.error('Error al crear entrada de curso en Notion:', error);
-    enviarNotificacion(`Fallo en Notion: ${error.message}`, canalDeBugsId);
+    return null;
   }
 }
-
-async function crearTablaDeberes(cursoId, tareas, anuncios, fechasDeEntrega, fechasDeExamenes, nombreCurso) {
-  try {
-    const tasksTable = tareas.map(tarea => ({
-      task_title: tarea.titulo,
-      task_description: tarea.descripcion,
-      due_date: tarea.fechaEntrega,
-      course_name: nombreCurso,
-    }));
-
-    const datesTable = [...fechasDeEntrega, ...fechasDeExamenes].map(fecha => ({
-      item_title: fecha.nombre,
-      item_date: fecha.fechaDeEntrega || fecha.fecha,
-      item_type: fecha.fechaDeEntrega ? "Entrega" : "Examen",
-      course_name: nombreCurso,
-    }));
-
-    const response = await notion.pages.create({
-      parent: {
-        database_id: cursoId,
-      },
-      properties: {
-        Deberes: {
-          type: 'rich_text',
-          rich_text: [{ text: { content: JSON.stringify(tasksTable, null, 2) } }],
-        },
-        Fechas: {
-          type: 'rich_text',
-          rich_text: [{ text: { content: JSON.stringify(datesTable, null, 2) } }],
-        },
-      },
-    });
-
-    console.log('Tabla de deberes creada en Notion:', response);
-  } catch (error) {
-    console.error('Error al crear tabla de deberes en Notion:', error);
-    enviarNotificacion(`Fallo en Notion: ${error.message}`, canalDeBugsId);
-  }
-}
-
-async function crearHojaCursoConSubhojas(nombreCurso) {
-  try {
-    const cursoPage = await notion.pages.create({
-      parent: {
-        database_id: baseDeDatosNotionId,
-      },
-      properties: {
-        Nombre: {
-          title: [{ type: 'text', text: { content: nombreCurso } }],
-        },
-      },
-    });
-
-    const subhojas = ['Apuntes', 'Anuncios'];
-
-    for (const subhojaNombre of subhojas) {
-      await notion.pages.create({
-        parent: {
-          page_id: cursoPage.id,
-        },
-        properties: {
-          title: { title: [{ type: 'text', text: { content: subhojaNombre } }] },
-        },
-      });
-    }
-
-    console.log(`Hoja de curso creada: ${nombreCurso}`);
-    console.log(`Subhojas creadas: ${subhojas.join(', ')}`);
-  } catch (error) {
-    console.error('Error al crear hoja de curso y subhojas:', error);
-    enviarNotificacion(`Fallo en Notion: ${error.message}`, canalDeBugsId);
-  }
-}
-
-async function main() {
-  const conexionNotion = await verificarConexionNotion();
-  if (conexionNotion) {
-    await obtenerYAlmacenarDatosDeGoogleClassroomEnNotion();
-    console.log('Proceso completado.');
-  } else {
-    console.log('No se pudo verificar la conexión a Notion. Proceso cancelado.');
-    enviarNotificacion('No se pudo verificar la conexión a Notion. Proceso cancelado.', canalDeBugsId);
-  }
-}
-
-async function enviarNotificacionNuevosErrores(mensaje) {
-  try {
-    await enviarNotificacion(mensaje);
-  } catch (error) {
-    console.error('Error al enviar notificación de errores:', error);
-    throw error;
-  }
-}
-async function main() {
-  const conexionNotion = await verificarConexionNotion();
-  if (conexionNotion) {
-    await obtenerYAlmacenarDatosDeGoogleClassroomEnNotion();
-    console.log('Proceso completado.');
-  } else {
-    console.log('No se pudo verificar la conexión a Notion. Proceso cancelado.');
-    enviarNotificacion('No se pudo verificar la conexión a Notion. Proceso cancelado.', canalDeBugsId);
-  }
-}
-
-main();
-module.exports = {
-  enviarNotificacionNuevosErrores
-};

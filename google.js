@@ -1,221 +1,115 @@
-// google.js
-
+// Importaciones
 const { google } = require('googleapis');
 const { tokenGoogle } = require('./acceso');
-const { notificarCambioAnuncio, notificarDeberesNuevos, notificarActualizacionFechas, notificarActualizacionNotas } = require('./notificaciones');
-const {EventEmitter} = require('events');
+const { enviarNotificacion } = require('./notificacionesDeGoogle');
+const EventEmitter = require('events');
+
+// Funciones de utilidad
+const getCourses = async () => {
+  const response = await classroom.courses.list();
+  return response.data.courses;
+};
+
+const getDueDates = async (courseId) => {
+  const response = await classroom.courses.courseWork.list({ courseId });
+  return response.data.courseWork.map((courseWork) => courseWork.dueDate);
+};
+
+const getAnnouncements = async (courseId) => {
+  const response = await classroom.courses.announcements.list({ courseId });
+  return response.data.announcements;
+};
+
+const getExams = async (courseId) => {
+  const response = await classroom.courses.courseWork.list({ courseId });
+  return response.data.courseWork.filter((courseWork) => courseWork.type === 'Exam');
+};
+
+const getChangesInDueDates = async (courseId, previousDueDates) => {
+  const newDueDates = await getDueDates(courseId);
+  return newDueDates.filter((newDueDate) => {
+    const previousDueDate = previousDueDates.find((previousDueDate) => previousDueDate.name === newDueDate.name);
+    return !previousDueDate || previousDueDate.dueDate !== newDueDate.dueDate;
+  });
+};
+
+const getNewAssignments = async (courseId, previousAssignments) => {
+  const newAssignments = await getCourseWork(courseId);
+  return newAssignments.filter((newAssignment) => {
+    return !previousAssignments.some((previousAssignment) => previousAssignment.id === newAssignment.id);
+  });
+};
+
+const getChangesInGrades = async (courseId, previousGrades) => {
+  const newGrades = await getGrades(courseId);
+  return newGrades.filter((newGrade) => {
+    const previousGrade = previousGrades.find((previousGrade) => previousGrade.id === newGrade.id);
+    return !previousGrade || previousGrade.grade !== newGrade.grade;
+  });
+};
+
+// Eventos
 const miEventEmitter = new EventEmitter();
 
-const SCOPES = [
-  'https://www.googleapis.com/auth/classroom.courses',
-  'https://www.googleapis.com/auth/classroom.courses.readonly',
-  'https://www.googleapis.com/auth/classroom.coursework.students',
-  'https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly',
-  'https://www.googleapis.com/auth/classroom.announcements',
-  'https://www.googleapis.com/auth/classroom.announcements.readonly',
-  'https://www.googleapis.com/auth/classroom.guardianlinks.students.readonly',
-];
+miEventEmitter.on('nuevasTareas', (cursoId, tareas) => {
+  console.log('Nuevas tareas en el curso ' + cursoId);
+  enviarNotificacion('Nuevas tareas en el curso ' + cursoId, tareas);
+});
 
-if (tokenGoogle) {
-  const googleAuth = new google.auth.OAuth2();
-  googleAuth.setCredentials({ access_token: tokenGoogle });
+miEventEmitter.on('fechasDeEntrega', (cursoId, fechasDeEntrega) => {
+  console.log('Cambios en las fechas de entrega del curso ' + cursoId);
+  enviarNotificacion('Cambios en las fechas de entrega del curso ' + cursoId, fechasDeEntrega);
+});
 
-  const classroom = google.classroom({
-    version: 'v1',
-    auth: googleAuth,
-  });
+miEventEmitter.on('fechasExamenes', (cursoId, fechasDeExamenes) => {
+  console.log('Cambios en las fechas de exámenes del curso ' + cursoId);
+  enviarNotificacion('Cambios en las fechas de exámenes del curso ' + cursoId, fechasDeExamenes);
+});
 
-  async function notificarCambioDeAnuncio(asignatura) {
-    await notificarCambioAnuncio(asignatura);
-  }
+miEventEmitter.on('comentarios', (cursoId, comentarios) => {
+  console.log('Nuevos comentarios en el curso ' + cursoId);
+  enviarNotificacion('Nuevos comentarios en el curso ' + cursoId, comentarios);
+});
 
-  async function notificarDeberesNuevosCurso(asignatura, fechaEntrega) {
-    await notificarDeberesNuevos(asignatura, fechaEntrega);
-  }
+// Función principal
+async function main() {
+  // Obtén una lista de cursos
+  const courses = await getCourses();
 
-  async function notificarActualizacionFechasCurso(asignatura) {
-    await notificarActualizacionFechas(asignatura);
-  }
+  // Itera sobre los cursos
+  for (const course of courses) {
+    // Obtén las fechas de entrega
+    const dueDates = await getDueDates(course.id);
+    const cambiosEnDueDates = await getChangesInDueDates(course.id, dueDates);
 
-  async function notificarActualizacionNotasCurso(asignatura) {
-    await notificarActualizacionNotas(asignatura);
-  }
+    // Obtén los anuncios
+    const announcements = await getAnnouncements(course.id);
 
-  function obtenerListaDeCursos() {
-    classroom.courses.list({}, (err, res) => {
-      if (err) {
-        console.error(`Error al obtener la lista de cursos: ${err.message}`);
-      } else {
-        const courses = res.data.courses;
-        console.log(`Lista de cursos: ${JSON.stringify(courses)}`);
-      }
+    // Obtén los exámenes
+    const exams = await getExams(course.id);
+
+    // Obtén los cambios en las notas
+    const changesInGrades = await getChangesInGrades(course.id, previousGrades);
+
+    // Almacena los datos en Notion
+    almacenarDatosEnNotion(course, dueDates, cambiosEnDueDates, announcements, exams, changesInGrades);
+
+    // Escucha los eventos
+    miEventEmitter.on('nuevasTareas', (cursoId, tareas) => {
+      console.log('Nuevas tareas en el curso ' + cursoId);
+      enviarNotificacion('Nuevas tareas en el curso ' + cursoId, tareas);
     });
   }
-
-  function obtenerTareasDeCurso(cursoId) {
-    classroom.courses.courseWork.list({ courseId: cursoId }, (err, res) => {
-      if (err) {
-        console.error(`Error al obtener la lista de tareas: ${err.message}`);
-      } else {
-        const tareas = res.data.courseWork;
-        console.log(`Lista de tareas del curso ${cursoId}: ${JSON.stringify(tareas)}`);
-        miEventEmitter.emit('nuevasTareas', cursoId, tareas);
-      }
-    });
-  }
-
-  function obtenerAnunciosDeCurso(cursoId) {
-    classroom.courses.announcements.list({ courseId: cursoId }, (err, res) => {
-      if (err) {
-        console.error(`Error al obtener la lista de anuncios: ${err.message}`);
-      } else {
-        const anuncios = res.data.announcements;
-        console.log(`Lista de anuncios del curso ${cursoId}: ${JSON.stringify(anuncios)}`);
-        miEventEmitter.emit('AnunciosDeCurso', cursoId, anuncios);
-      }
-    });
-  }
-
-  function obtenerFechasDeEntrega(cursoId) {
-    classroom.courses.courseWork.list({ courseId: cursoId }, (err, res) => {
-      if (err) {
-        console.error(`Error al obtener la lista de tareas: ${err.message}`);
-      } else {
-        const tareas = res.data.courseWork;
-        const fechasDeEntrega = tareas.map((tarea) => ({
-          nombre: tarea.title,
-          fechaDeEntrega: tarea.dueDate,
-        }));
-        console.log(`Fechas de entrega del curso ${cursoId}: ${JSON.stringify(fechasDeEntrega)}`);
-        miEventEmitter.emit('FechasDeEntrega', cursoId, fechasDeEntrega);
-      }
-    });
-  }
-
-  function obtenerFechasDeExamenes(cursoId) {
-    classroom.courses.list({}, (err, res) => {
-      if (err) {
-        console.error(`Error al obtener la lista de cursos: ${err.message}`);
-      } else {
-        const courses = res.data.courses;
-        const cursoEncontrado = courses.find((curso) => curso.id === cursoId);
-        if (cursoEncontrado) {
-          console.log(`Nombre del curso ${cursoId}: ${cursoEncontrado.name}`);
-          const fechasDeExamenes = [
-            {
-              nombre: 'Examen 1',
-              fecha: '2023-09-20T09:00:00Z',
-            },
-            {
-              nombre: 'Examen 2',
-              fecha: '2023-10-05T14:00:00Z',
-            },
-          ];
-          console.log(`Fechas de exámenes del curso ${cursoId}: ${JSON.stringify(fechasDeExamenes)}`);
-          miEventEmitter.emit('FechasDeExamenes', cursoId, fechasDeExamenes);
-        } else {
-          console.error(`Curso con ID ${cursoId} no encontrado.`);
-        }
-      }
-    });
-  }
-
-  function descargarArchivoDeDeber(archivoId) {
-    console.log(`Descargando archivo de deber con ID: ${archivoId}`);
-  }
-
-  async function obtenerCambiosDeFechas(cursoId, fechasAnteriores) {
-    try {
-      const tareas = await obtenerTareasDeCurso(cursoId);
-      const nuevasFechas = tareas.map(tarea => ({
-        nombre: tarea.title,
-        fechaDeEntrega: tarea.dueDate,
-      }));
-  
-      const cambios = nuevasFechas.filter(nuevaFecha => {
-        const fechaAnterior = fechasAnteriores.find(fechaAnt => fechaAnt.nombre === nuevaFecha.nombre);
-        return !fechaAnterior || fechaAnterior.fechaDeEntrega !== nuevaFecha.fechaDeEntrega;
-      });
-  
-      return cambios;
-    } catch (error) {
-      console.error('Error al obtener cambios en fechas:', error);
-      throw error;
-    }
-  }
-  
-  async function obtenerNuevosDeberes(cursoId, deberesAnteriores) {
-    try {
-      const tareas = await obtenerTareasDeCurso(cursoId);
-  
-      const nuevosDeberes = tareas.filter(tarea => {
-        return !deberesAnteriores.some(deberAnt => deberAnt.id === tarea.id);
-      });
-  
-      return nuevosDeberes;
-    } catch (error) {
-      console.error('Error al obtener deberes nuevos:', error);
-      throw error;
-    }
-  }
-  
-  async function obtenerCambiosEnNotas(cursoId, notasAnteriores) {
-    try {
-
-      const notasActuales = await obtenerNotasDeCurso(cursoId);
-      const cambiosEnNotas = notasActuales.filter(nuevaNota => {
-        const notaAnterior = notasAnteriores.find(notaAnt => notaAnt.id === nuevaNota.id);
-        return !notaAnterior || notaAnterior.nota !== nuevaNota.nota;
-      });
-  
-      return cambiosEnNotas;
-    } catch (error) {
-      console.error('Error al obtener cambios en notas:', error);
-      throw error;
-    }
-  }
-
-  async function obtenerYAlmacenarDatosDeGoogleClassroomEnNotion() {
-    try {
-      const cursos = await obtenerListaDeCursos();
-  
-      for (const curso of cursos) {
-        const tareas = await obtenerTareasDeCurso(curso.id);
-        const anuncios = await obtenerAnunciosDeCurso(curso.id);
-        const fechasDeEntrega = await obtenerFechasDeEntrega(curso.id);
-        const fechasDeExamenes = await obtenerFechasDeExamenes(curso.id);
-        almacenarDatosEnNotion(curso, tareas, anuncios, fechasDeEntrega, fechasDeExamenes);
-    
-        console.log('Datos de Google Classroom almacenados en Notion para el curso:', curso.id);
-      }
-  
-      console.log('Datos de Google Classroom almacenados en Notion.');
-    } catch (error) {
-      console.error('Error al obtener y almacenar datos de Google Classroom en Notion:', error);
-      enviarNotificacion(`Fallo en Notion: ${error.message}`, canalDeBugsId);
-    }
-  }
-  
-  module.exports = {
-    classroom,
-    SCOPES,
-    miEventEmitter,
-    obtenerYAlmacenarDatosDeGoogleClassroomEnNotion,
-    obtenerListaDeCursos,
-    obtenerTareasDeCurso,
-    obtenerAnunciosDeCurso,
-    obtenerFechasDeEntrega,
-    obtenerFechasDeExamenes,
-    descargarArchivoDeDeber,
-    obtenerCambiosDeFechas,
-    obtenerNuevosDeberes,
-    obtenerCambiosEnNotas,
-    notificarCambioDeAnuncio,
-    notificarDeberesNuevosCurso,
-    notificarActualizacionFechasCurso,
-    notificarActualizacionNotasCurso
-  };
-
-} else {
-  console.error('Token de acceso no válido. Asegúrate de obtener un token de acceso válido.');
 }
+
+// Exportaciones
+module.exports = {
+  getCourses,
+  getDueDates,
+  getAnnouncements,
+  getExams,
+  getChangesInDueDates,
+  getNewAssignments,
+  getChangesInGrades,
+  main,
+};

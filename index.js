@@ -1,35 +1,50 @@
-//index.js
+// index.js
 
-const { GatewayIntentBits, TextChannel } = require('discord.js');
-const { token } = require('./config.json');
-const { miEventEmitter, obtenerYAlmacenarDatosDeGoogleClassroomEnNotion } = require('./google.js');
-const { main: almacenarDatosEnNotion } = require('./notion.js');
-const Discord = require('discord.js');
+const token = 'TOKEN';
 
-const client = new Discord.Client({
-  intents: {
-    GUILDS: true,
-    GUILD_MEMBERS: true,
-    GUILD_BANS: true,
-    GUILD_EMOJIS_AND_STICKERS: true,
-    GUILD_INTEGRATIONS: true,
-    GUILD_WEBHOOKS: true,
-    GUILD_INVITES: true,
-    GUILD_VOICE_STATES: true,
-    GUILD_PRESENCES: true,
-    GUILD_MESSAGES: true,
-    GUILD_MESSAGE_REACTIONS: true,
-    GUILD_MESSAGE_TYPING: true,
-    DIRECT_MESSAGES: true,
-    DIRECT_MESSAGE_REACTIONS: true,
-    DIRECT_MESSAGE_TYPING: true,
-  },
+// Importa solo las clases y constantes que necesitas
+import { Client, GatewayIntentBits } from 'discord.js';
+import { Client as NotionClient } from '@notionhq/client';
+
+// Define la constante Intents
+const intents = new GatewayIntentBits([
+  GatewayIntentBits.GUILDS,
+  GatewayIntentBits.GUILD_MEMBERS,
+  GatewayIntentBits.GUILD_EMOJIS_AND_STICKERS,
+  GatewayIntentBits.GUILD_INTEGRATIONS,
+  GatewayIntentBits.GUILD_PRESENCES,
+  GatewayIntentBits.GUILD_MESSAGES,
+  GatewayIntentBits.GUILD_MESSAGE_REACTIONS,
+  GatewayIntentBits.GUILD_MESSAGE_TYPING,
+  GatewayIntentBits.GUILD_EMBEDS,
+  GatewayIntentBits.DIRECT_MESSAGES,
+  GatewayIntentBits.DIRECT_MESSAGE_REACTIONS,
+  GatewayIntentBits.DIRECT_MESSAGE_TYPING,
+]);
+
+const { tokenNotion, baseDeDatosNotionId, BugsID, canalNotificacionesId } = require('./acceso.js');
+const { enviarNotificacion } = require('./notificacionesDeGoogle');
+
+const notion = new NotionClient({ auth: tokenNotion });
+const canalDeBugsId = BugsID;
+
+// Crea una nueva instancia de la clase Client, proporcionando los intents necesarios
+const client = new Client({
+  intents,
 });
 
-client.once('ready', () => {
+client.on('ready', () => {
   console.log(`Bot is ready and logged in as ${client.user.tag}`);
-  obtenerYAlmacenarDatosDeGoogleClassroomEnNotion();
-  almacenarDatosEnNotion();
+
+  // Ejecutar la función principal
+  main();
+
+  // Enviar notificaciones
+  const canalDeNotificaciones = client.channels.get(canalNotificacionesId);
+  enviarNotificacion(canalDeNotificaciones);
 });
 
-client.login(token);
+async function main() {
+  await verificarConexionNotion();
+  await obtenerYAlmacenarDatosDeGoogleClassroomEnNotion();
+}
